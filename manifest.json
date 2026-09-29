@@ -1,0 +1,42 @@
+{
+  "name": "ZenGastos",
+  "short_name": "ZenGastos",
+  "description": "Registro de gastos compartido para parejas",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#09090d",
+  "theme_color": "#09090d",
+  "orientation": "portrait-primary",
+  "lang": "es",
+  "icons": [
+    {
+      "src": "icon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["finance", "productivity"],
+  "shortcuts": [
+    {
+      "name": "Nuevo Gasto",
+      "short_name": "Gasto",
+      "description": "Registrar un nuevo gasto",
+      "url": "/?action=add-expense",
+      "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
+    },
+    {
+      "name": "Nuevo Ingreso",
+      "short_name": "Ingreso",
+      "description": "Registrar un nuevo ingreso",
+      "url": "/?action=add-income",
+      "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
+    }
+  ]
+}
