@@ -13,13 +13,13 @@
       "src": "icon.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
       "src": "icon.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     }
   ],
   "categories": ["finance", "productivity"],
@@ -28,14 +28,14 @@
       "name": "Nuevo Gasto",
       "short_name": "Gasto",
       "description": "Registrar un nuevo gasto",
-      "url": "/?action=add-expense",
+      "url": "?action=add-expense",
       "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
     },
     {
       "name": "Nuevo Ingreso",
       "short_name": "Ingreso",
       "description": "Registrar un nuevo ingreso",
-      "url": "/?action=add-income",
+      "url": "?action=add-income",
       "icons": [{ "src": "icon.png", "sizes": "192x192", "type": "image/png" }]
     }
   ]
