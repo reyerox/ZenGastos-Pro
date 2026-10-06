@@ -830,9 +830,7 @@ function GoalsWidget({ globalBalance }) {
 //  ADD / EDIT TRANSACTION MODAL & ROW
 // ══════════════════════════════════════════════
 function AddTxModal({ type, initialData, onSave, onClose, month, year, theme, currentUser }) {
-  const today = new Date();
-  const defDate = new Date(year, month, year===today.getFullYear()&&month===today.getMonth() ? today.getDate() : 1)
-    .toISOString().slice(0,10);
+  const defDate = new Date().toISOString().slice(0,10);
   
   const [f, setF] = useState(() => {
     if (initialData) {
