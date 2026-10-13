@@ -293,22 +293,41 @@ class ErrorBoundary extends React.Component {
 // ══════════════════════════════════════════════
 const CSV_HDR = ['id','date','type','concept','amount','tipo','paidBy','scope','customTipo'];
 
-function exportCSV(txs, month, year) {
-  const rows = txs
-    .filter(t => { const d=new Date(t.date); return d.getMonth()===month && d.getFullYear()===year; })
-    .sort((a,b) => new Date(a.date)-new Date(b.date));
+function exportCSV(txs, month, year, mode = 'month') {
+  let rows = [];
+  let filename = '';
+  if (mode === 'month') {
+    rows = txs.filter(t => {
+      const d = new Date(t.date);
+      return d.getMonth() === month && d.getFullYear() === year;
+    });
+    filename = `ZenGastos_${MONTHS[month]}_${year}.csv`;
+  } else if (mode === 'year') {
+    rows = txs.filter(t => {
+      const d = new Date(t.date);
+      return d.getFullYear() === year;
+    });
+    filename = `ZenGastos_Anual_${year}.csv`;
+  } else {
+    rows = [...txs];
+    filename = `ZenGastos_Historico_Completo.csv`;
+  }
+  rows.sort((a,b) => new Date(a.date) - new Date(b.date));
   const lines = [CSV_HDR.join(','), ...rows.map(t =>
     [t.id, t.date, t.type, `"${(t.concept||'').replace(/"/g,'""')}"`, t.amount, t.tipo, t.paidBy, t.scope||'Común', `"${(t.customTipo||'').replace(/"/g,'""')}"`].join(',')
   )];
-  const blob = new Blob([lines.join('\n')], {type:'text/csv;charset=utf-8;'});
-  const a = Object.assign(document.createElement('a'), { href:URL.createObjectURL(blob), download:`ZenGastos_${MONTHS[month]}_${year}.csv` });
+  const bom = '\uFEFF';
+  const blob = new Blob([bom + lines.join('\n')], {type:'text/csv;charset=utf-8;'});
+  const a = Object.assign(document.createElement('a'), { href:URL.createObjectURL(blob), download: filename });
   a.click(); URL.revokeObjectURL(a.href);
+  return rows.length;
 }
 
 function parseCSV(text) {
-  const lines = text.trim().split('\n');
+  const clean = text.replace(/^\uFEFF/, '');
+  const lines = clean.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
-  const hdrs = lines[0].split(',').map(s=>s.trim());
+  const hdrs = lines[0].split(',').map(s=>s.trim().replace(/^"|"$/g, ''));
   const idx  = k => hdrs.indexOf(k);
   return lines.slice(1).map(line => {
     const cols = [];
@@ -625,35 +644,64 @@ function BalanceChartWidget({ totalIncome, totalSpend }) {
   );
 }
 
-function BudgetWidget({ totalSpend }) {
-  // Ahora usamos una clave global en lugar de monthKey
-  const [budget, setBudget] = useState(()=>ls('zg_global_budget', 0));
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft]     = useState('');
+function BudgetWidget({ monthTx, budget, setBudget, budgetCats, setBudgetCats, budgetSpend }) {
+  const [editing, setEditing]     = useState(false);
+  const [draft, setDraft]         = useState('');
+  const [draftCats, setDraftCats] = useState([]);
 
-  const pct    = budget > 0 ? (totalSpend/budget)*100 : 0;
+  const cats = (budgetCats && budgetCats.length > 0) ? budgetCats : ['Ocio'];
+  const spend = budgetSpend !== undefined ? budgetSpend : monthTx.filter(t=>t.type==='expense' && cats.includes(t.tipo)).reduce((s,t)=>s+t.amount,0);
+
+  const pct    = budget > 0 ? (spend/budget)*100 : 0;
   const over   = pct > 100;
   const barClr = over ? 'var(--spend-color)' : pct>80 ? 'var(--gold-color)' : 'var(--income-color)';
 
+  const openModal = () => {
+    setDraft(budget > 0 ? String(budget) : '');
+    setDraftCats([...cats]);
+    setEditing(true);
+  };
+
+  const toggleCat = (cat) => {
+    setDraftCats(prev => {
+      if (prev.includes(cat)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(c => c !== cat);
+      } else {
+        return [...prev, cat];
+      }
+    });
+  };
+
   const save = () => {
     const v = parseFloat(draft);
-    if (!isNaN(v) && v>0) {
+    if (!isNaN(v) && v > 0) {
       setBudget(v); 
-      lsSet('zg_global_budget', v); // Guardamos globalmente
+      lsSet('zg_global_budget', v);
     }
+    const finalCats = draftCats.length > 0 ? draftCats : ['Ocio'];
+    setBudgetCats(finalCats);
+    lsSet('zg_budget_cats', finalCats);
     setEditing(false);
   };
 
+  const catNames = cats.length === TIPOS.length ? 'Todos los gastos' : cats.join(', ');
+
   return (
     <div className="glass rounded-2xl p-6 space-y-5">
-      <div className="flex items-center justify-between border-b pb-3" style={{borderColor: 'var(--border-color)'}}>
-        <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-2" style={{color: 'var(--text-dim)'}}>
-          <LI name="Target" size={14}/> Presupuesto
-        </span>
-        <button onClick={()=>{setDraft(budget>0?String(budget):'');setEditing(true);}}
+      <div className="flex items-center justify-between border-b pb-3 flex-wrap gap-2" style={{borderColor: 'var(--border-color)'}}>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5" style={{color: 'var(--text-dim)'}}>
+            <LI name="Target" size={14}/> Presupuesto
+          </span>
+          <span className="chip border text-[10px] py-0.5 px-2" style={{background: 'var(--accent-bg)', color: 'var(--accent-color)', borderColor: 'var(--accent-color)'}}>
+            {cats.length === 1 ? cats[0] : (cats.length === TIPOS.length ? 'Global' : `${cats.length} categ.`)}
+          </span>
+        </div>
+        <button onClick={openModal}
           className="text-xs font-semibold transition-colors flex items-center gap-1.5 px-2.5 py-1 rounded-lg"
           style={{color: 'var(--accent-color)', background: 'var(--accent-bg)'}}>
-          <LI name="Pencil" size={12}/> {budget>0?'Editar':'Establecer'}
+          <LI name="Pencil" size={12}/> {budget>0?'Editar':'Configurar'}
         </button>
       </div>
 
@@ -661,13 +709,15 @@ function BudgetWidget({ totalSpend }) {
         <div className="pt-1">
           <div className="flex justify-between items-end mb-3">
             <div>
-              <div className="font-mono text-[22px] font-bold" style={{color:barClr}}>{fmtEur(totalSpend)}</div>
-              <div className="text-xs mt-1 font-medium" style={{color: 'var(--text-dim)'}}>de {fmtEur(budget)} marcados</div>
+              <div className="font-mono text-[22px] font-bold" style={{color:barClr}}>{fmtEur(spend)}</div>
+              <div className="text-xs mt-1 font-medium" style={{color: 'var(--text-dim)'}}>
+                de {fmtEur(budget)} marcados en <span className="font-semibold" style={{color: 'var(--text-main)'}}>{catNames}</span>
+              </div>
             </div>
             <div className="font-mono text-sm font-bold px-2 py-1 rounded-md border" style={{color:barClr, background: 'var(--raised-bg)', borderColor: 'var(--border-color)'}}>{pct.toFixed(1)}%</div>
           </div>
           <ProgBar pct={pct} color={barClr} big/>
-          {over && <p className="text-xs font-semibold flex items-center gap-1.5 mt-3" style={{color: 'var(--spend-color)'}}><LI name="AlertTriangle" size={14}/>¡Límite superado!</p>}
+          {over && <p className="text-xs font-semibold flex items-center gap-1.5 mt-3" style={{color: 'var(--spend-color)'}}><LI name="AlertTriangle" size={14}/>¡Límite de {catNames} superado!</p>}
         </div>
       ) : (
         <div className="flex flex-col items-center justify-center py-6 space-y-2 opacity-60">
@@ -677,17 +727,57 @@ function BudgetWidget({ totalSpend }) {
       )}
 
       {editing && (
-        <Modal title="Ajustar Presupuesto Fijo" onClose={()=>setEditing(false)}>
+        <Modal title="Ajustar Límite de Presupuesto" onClose={()=>setEditing(false)}>
           <div className="space-y-5">
-            <p className="text-[13px] mb-2" style={{color: 'var(--text-dim)'}}>Este límite se mantendrá igual en todos los meses hasta que lo vuelvas a modificar.</p>
+            <p className="text-[13px] leading-relaxed" style={{color: 'var(--text-dim)'}}>
+              Define tu tope mensual y elige sobre qué etiquetas aplica (por ejemplo, solo <strong style={{color: 'var(--accent-color)'}}>Ocio</strong> para que inversiones o fijos no te gasten el presupuesto).
+            </p>
             <div>
-              <label className="f-label">Límite de gasto mensual (€)</label>
-              <input type="number" min="1" step="10" className="f-input text-lg font-mono" placeholder="1500.00"
+              <label className="f-label">Límite mensual (€)</label>
+              <input type="number" min="1" step="10" className="f-input text-lg font-mono" placeholder="200.00"
                 value={draft} onChange={e=>setDraft(e.target.value)} autoFocus/>
             </div>
-            <button onClick={save} className="w-full py-3.5 rounded-xl text-[15px] font-bold transition-all shadow-lg"
+            <div>
+              <label className="f-label mb-2">Categorías que cuentan para el límite</label>
+              <div className="flex gap-2 mb-3 flex-wrap">
+                <button type="button" onClick={()=>setDraftCats(['Ocio'])}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all"
+                  style={{background: draftCats.length===1 && draftCats[0]==='Ocio' ? 'var(--accent-bg)' : 'var(--raised-bg)', borderColor: draftCats.length===1 && draftCats[0]==='Ocio' ? 'var(--accent-color)' : 'var(--border-color)', color: draftCats.length===1 && draftCats[0]==='Ocio' ? 'var(--accent-color)' : 'var(--text-dim)'}}>
+                  Solo Ocio
+                </button>
+                <button type="button" onClick={()=>setDraftCats(['Ocio', 'Opcionales'])}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all"
+                  style={{background: draftCats.length===2 && draftCats.includes('Ocio') && draftCats.includes('Opcionales') ? 'var(--accent-bg)' : 'var(--raised-bg)', borderColor: draftCats.length===2 && draftCats.includes('Ocio') && draftCats.includes('Opcionales') ? 'var(--accent-color)' : 'var(--border-color)', color: draftCats.length===2 && draftCats.includes('Ocio') && draftCats.includes('Opcionales') ? 'var(--accent-color)' : 'var(--text-dim)'}}>
+                  Ocio + Opcionales
+                </button>
+                <button type="button" onClick={()=>setDraftCats([...TIPOS])}
+                  className="px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all"
+                  style={{background: draftCats.length===TIPOS.length ? 'var(--accent-bg)' : 'var(--raised-bg)', borderColor: draftCats.length===TIPOS.length ? 'var(--accent-color)' : 'var(--border-color)', color: draftCats.length===TIPOS.length ? 'var(--accent-color)' : 'var(--text-dim)'}}>
+                  Todos los gastos
+                </button>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {TIPOS.map(cat => {
+                  const sel = draftCats.includes(cat);
+                  const clr = TIPO_CLR[cat] || 'var(--text-main)';
+                  return (
+                    <button key={cat} type="button" onClick={()=>toggleCat(cat)}
+                      className={`p-2.5 rounded-xl border text-xs font-bold flex items-center justify-between transition-all ${sel ? 'shadow-sm' : 'opacity-40'}`}
+                      style={{
+                        background: sel ? TIPO_BG[cat] || 'var(--raised-bg)' : 'var(--raised-bg)',
+                        borderColor: sel ? clr : 'var(--border-color)',
+                        color: sel ? clr : 'var(--text-dim)'
+                      }}>
+                      <span>{cat}</span>
+                      {sel ? <LI name="Check" size={14}/> : <span className="w-3.5 h-3.5 rounded-full border border-current opacity-30" />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <button onClick={save} className="w-full py-3.5 rounded-xl text-[15px] font-bold transition-all shadow-lg mt-2"
               style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-color)', color: 'var(--accent-color)' }}>
-              Confirmar
+              Guardar Presupuesto
             </button>
           </div>
         </Modal>
@@ -1036,29 +1126,29 @@ function TxRow({ tx, onEdit, onDelete }) {
   }
   
   return (
-    <div className="tx-row flex items-center gap-3.5 px-3.5 py-3 anim-slidein">
-      <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center border" style={{background:bg, borderColor: 'var(--border-color)'}}>
+    <div className="tx-row flex items-start sm:items-center gap-3 px-3.5 py-3 anim-slidein">
+      <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center border mt-0.5 sm:mt-0" style={{background:bg, borderColor: 'var(--border-color)'}}>
         <LI name={isIn?'ArrowUpRight':'ArrowDownRight'} size={18} style={{color:clr}} />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap mb-1">
-          <span className="text-[14.5px] font-semibold truncate tracking-tight" style={{color: 'var(--text-main)'}}>{tx.concept}</span>
+      <div className="flex-1 min-w-0 pr-1">
+        <div className="text-[14px] font-semibold tracking-tight leading-snug break-words mb-1.5" style={{color: 'var(--text-main)'}}>
+          {tx.concept}
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className="chip border" style={{background:tagBg, color:tagColor, borderColor: 'var(--chip-border)'}}>
             {displayTag}
           </span>
           <span className="chip border" style={{background:scopeBg, color:scopeColor, borderColor: 'var(--chip-border)'}}>
             {scopeLabel}
           </span>
-        </div>
-        <div className="flex items-center gap-1.5">
           <span className="text-[11.5px] font-medium" style={{color: 'var(--text-dim)'}}>{dateStr}</span>
           <span className="text-[10px]" style={{color: 'var(--text-dim)'}}>·</span>
           <span className="text-[11.5px] font-medium" style={{color:'var(--accent-color)'}}>{tx.paidBy}</span>
         </div>
       </div>
       
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <span className="font-mono text-[15px] font-bold mr-2" style={{color:clr}}>
+      <div className="flex items-center gap-1 flex-shrink-0 mt-0.5 sm:mt-0">
+        <span className="font-mono text-[14.5px] sm:text-[15px] font-bold mr-1 sm:mr-2 text-right whitespace-nowrap" style={{color:clr}}>
           {isIn?'+':'-'}{fmtEur(tx.amount)}
         </span>
         <button className="del-btn p-1.5 rounded-xl transition-colors" style={{color: 'var(--text-dim)'}} onClick={()=>onEdit(tx)} title="Editar">
@@ -1179,7 +1269,7 @@ function CalendarView({ monthTx, month, year }) {
   );
 }
 
-function AnnualReportView({ txs, year }) {
+function AnnualReportView({ txs, year, onExportYear }) {
   const [selectedMonth, setSelectedMonth] = useState(null);
 
   const yearTx = txs.filter(t => new Date(t.date).getFullYear() === year);
@@ -1202,6 +1292,20 @@ function AnnualReportView({ txs, year }) {
 
   return (
     <div className="space-y-6 anim-fadeup min-h-[50vh]">
+      <div className="flex justify-between items-center flex-wrap gap-3">
+        <div>
+          <h2 className="font-serif text-2xl italic" style={{color: 'var(--text-main)'}}>Resumen Anual {year}</h2>
+          <p className="text-xs" style={{color: 'var(--text-dim)'}}>Visión global y evolución de tus finanzas</p>
+        </div>
+        {onExportYear && (
+          <button onClick={()=>onExportYear(year)}
+            className="flex items-center gap-2 px-4 py-2.5 glass rounded-xl text-xs font-bold transition-all shadow-md hover:-translate-y-0.5 border"
+            style={{color: 'var(--income-color)', borderColor: 'var(--income-color)', background: 'var(--income-bg)'}}>
+            <LI name="Download" size={15}/> Exportar Año {year} (CSV)
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="glass rounded-2xl p-6 text-center">
           <p className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{color: 'var(--text-dim)'}}>Total Ingresos {year}</p>
@@ -1308,9 +1412,79 @@ function AnnualReportView({ txs, year }) {
     </div>
   );
 }
+function ExportModal({ txs, month, year, onClose, onExport }) {
+  const monthRows = txs.filter(t => {
+    const d = new Date(t.date);
+    return d.getMonth() === month && d.getFullYear() === year;
+  });
+  const yearRows = txs.filter(t => {
+    const d = new Date(t.date);
+    return d.getFullYear() === year;
+  });
+
+  return (
+    <Modal title="Exportar a Excel / CSV" onClose={onClose}>
+      <div className="space-y-4">
+        <p className="text-[13px] leading-relaxed" style={{color: 'var(--text-dim)'}}>
+          Descarga tus movimientos para abrirlos en Excel, Google Sheets o conservarlos como copia de seguridad:
+        </p>
+
+        <div className="space-y-3">
+          <button onClick={()=>{ onExport('month'); onClose(); }}
+            className="w-full p-4 rounded-xl border glass text-left flex items-center justify-between group transition-all hover:scale-[1.01]"
+            style={{borderColor: 'var(--border-color)'}}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0"
+                   style={{background: 'var(--accent-bg)', borderColor: 'var(--accent-color)', color: 'var(--accent-color)'}}>
+                <LI name="Calendar" size={18}/>
+              </div>
+              <div>
+                <p className="font-bold text-[14px]" style={{color: 'var(--text-main)'}}>Mes actual ({MONTHS[month]} {year})</p>
+                <p className="text-xs" style={{color: 'var(--text-dim)'}}>{monthRows.length} movimientos de este mes</p>
+              </div>
+            </div>
+            <LI name="Download" size={16} style={{color: 'var(--text-dim)'}} className="group-hover:text-[var(--accent-color)] transition-colors"/>
+          </button>
+
+          <button onClick={()=>{ onExport('year'); onClose(); }}
+            className="w-full p-4 rounded-xl border glass text-left flex items-center justify-between group transition-all hover:scale-[1.01]"
+            style={{borderColor: 'var(--income-color)', background: 'var(--income-bg)'}}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0"
+                   style={{background: 'var(--income-bg)', borderColor: 'var(--income-color)', color: 'var(--income-color)'}}>
+                <LI name="TrendingUp" size={18}/>
+              </div>
+              <div>
+                <p className="font-bold text-[14px]" style={{color: 'var(--income-color)'}}>Año completo ({year})</p>
+                <p className="text-xs" style={{color: 'var(--text-dim)'}}>{yearRows.length} movimientos en todo el año {year}</p>
+              </div>
+            </div>
+            <LI name="Download" size={16} style={{color: 'var(--income-color)'}}/>
+          </button>
+
+          <button onClick={()=>{ onExport('all'); onClose(); }}
+            className="w-full p-4 rounded-xl border glass text-left flex items-center justify-between group transition-all hover:scale-[1.01]"
+            style={{borderColor: 'var(--border-color)'}}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center border flex-shrink-0"
+                   style={{background: 'var(--raised-bg)', borderColor: 'var(--border-color)', color: 'var(--text-dim)'}}>
+                <LI name="Archive" size={18}/>
+              </div>
+              <div>
+                <p className="font-bold text-[14px]" style={{color: 'var(--text-main)'}}>Todo el Historial Completo</p>
+                <p className="text-xs" style={{color: 'var(--text-dim)'}}>{txs.length} movimientos en total de todos los años</p>
+              </div>
+            </div>
+            <LI name="Download" size={16} style={{color: 'var(--text-dim)'}} className="group-hover:text-[var(--text-main)] transition-colors"/>
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ══════════════════════════════════════════════
 //  MAIN APP
-
 // ══════════════════════════════════════════════
 function App() {
   const now = new Date();
@@ -1368,10 +1542,23 @@ function App() {
        .sort((a,b)=>new Date(b.date)-new Date(a.date))
   ,[txs,month,year]);
 
+  const [budget, setBudget] = useState(()=>ls('zg_global_budget', 0));
+  const [budgetCats, setBudgetCats] = useState(()=>{
+    const saved = ls('zg_budget_cats', null);
+    return (saved && Array.isArray(saved) && saved.length > 0) ? saved : ['Ocio'];
+  });
+  const [exportModalOpen, setExportModalOpen] = useState(false);
+
   const totalSpend  = useMemo(()=>monthTx.filter(t=>t.type==='expense').reduce((s,t)=>s+t.amount,0),[monthTx]);
   const totalIncome = useMemo(()=>monthTx.filter(t=>t.type==='income').reduce((s,t)=>s+t.amount,0),[monthTx]);
   const balance     = totalIncome-totalSpend;
-  const budgetPct   = totalIncome>0 ? (totalSpend/totalIncome)*100 : 0;
+
+  const budgetSpend = useMemo(()=>{
+    const cats = (budgetCats && budgetCats.length > 0) ? budgetCats : ['Ocio'];
+    return monthTx.filter(t=>t.type==='expense' && cats.includes(t.tipo)).reduce((s,t)=>s+t.amount,0);
+  }, [monthTx, budgetCats]);
+
+  const budgetPct = budget > 0 ? (budgetSpend / budget) * 100 : (totalIncome > 0 ? (totalSpend / totalIncome) * 100 : 0);
 
   // DATOS MES ANTERIOR (COMPARATIVA)
   const prevMonthNum = month === 0 ? 11 : month - 1;
@@ -1586,7 +1773,12 @@ function App() {
   
   const delTx  = (id) => { setTxs(p=>p.filter(t=>t.id!==id)); showToast('Eliminado','var(--spend-color)'); };
 
-  const doExport = ()=>{ exportCSV(txs,month,year); showToast(`Exportado: ${MONTHS[month]} ${year}`, 'var(--accent-color)'); };
+  const doExport = (mode = 'month') => {
+    const count = exportCSV(txs, month, year, mode);
+    const label = mode === 'year' ? `Año ${year}` : mode === 'all' ? 'Histórico completo' : `${MONTHS[month]} ${year}`;
+    showToast(`Exportado: ${label} (${count} mov.)`, 'var(--income-color)');
+  };
+
   const doImport = (e)=>{
     const f=e.target.files[0]; if(!f)return;
     const r=new FileReader();
@@ -1594,10 +1786,11 @@ function App() {
       const parsed=parseCSV(ev.target.result);
       if(!parsed.length){showToast('CSV vacío o inválido','var(--spend-color)');return;}
       setTxs(prev=>{ 
-        const ids=new Set(prev.map(t=>t.id)); 
-        return [...prev,...parsed.filter(t=>!ids.has(t.id))]; 
+        const map = new Map(prev.map(t=>[t.id, t]));
+        parsed.forEach(p => map.set(p.id, p));
+        return Array.from(map.values());
       });
-      showToast(`${parsed.length} movimientos importados`, 'var(--income-color)');
+      showToast(`${parsed.length} movimientos importados correctamente`, 'var(--income-color)');
     };
     r.readAsText(f); e.target.value='';
   };
@@ -1607,7 +1800,7 @@ function App() {
   );
 
   return (
-    <div className="min-h-screen px-4 pt-8 pb-32 max-w-[1200px] mx-auto space-y-6">
+    <div className="min-h-screen px-4 pt-8 pb-44 sm:pb-36 max-w-[1200px] mx-auto space-y-6">
       {toast && <Toast msg={toast.msg} color={toast.color}/>}
       <input ref={fileRef} type="file" accept=".csv, text/csv, application/vnd.ms-excel, application/csv, text/x-csv, application/x-csv, text/comma-separated-values, text/x-comma-separated-values" className="hidden" onChange={doImport}/>
 
@@ -1644,7 +1837,7 @@ function App() {
             className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2.5 glass rounded-xl text-xs font-bold transition-all shadow-md" style={{color: 'var(--text-main)', border: syncStatus==='syncing'?'1px solid var(--accent-color)':'1px solid transparent'}}>
             <LI name="Cloud" size={15}/> <span>{syncStatus==='syncing'?'Sincronizando...':'Sync'}</span>
           </button>
-          <button onClick={doExport} title="Exportar CSV"
+          <button onClick={()=>setExportModalOpen(true)} title="Exportar CSV"
             className="flex items-center gap-1.5 px-2.5 sm:px-4 py-2.5 glass rounded-xl text-xs font-bold transition-all shadow-md" style={{color: 'var(--text-dim)'}}>
             <LI name="Download" size={15}/> <span className="hidden md:inline">Exportar</span>
           </button>
@@ -1670,9 +1863,15 @@ function App() {
           sub="este mes" icon={<LI name="TrendingUp" size={16}/>} delay="delay-2" diff={incomeDiff}/>
         <SummaryCard label="Balance" value={fmtEur(balance)} color={balance>=0?'var(--income-color)':'var(--spend-color)'}
           sub={balance>=0?'en positivo':'en déficit'} icon={<LI name="Wallet" size={16}/>} delay="delay-3"/>
-        <SummaryCard label="% Presupuesto" value={budgetPct.toFixed(1)+'%'} color="var(--accent-color)"
-          sub={totalIncome>0?`${fmtEur(totalSpend)} de ${fmtEur(totalIncome)}`:'sin ingresos'}
-          icon={<LI name="Activity" size={16}/>} delay="delay-4"/>
+        <SummaryCard 
+          label={budget > 0 ? (budgetCats.length === 1 ? `% Presup. (${budgetCats[0]})` : '% Presupuesto') : '% Presupuesto'} 
+          value={budgetPct.toFixed(1)+'%'} 
+          color={budget > 0 ? (budgetSpend > budget ? 'var(--spend-color)' : budgetPct > 80 ? 'var(--gold-color)' : 'var(--income-color)') : 'var(--accent-color)'}
+          sub={budget > 0 
+            ? `${fmtEur(budgetSpend)} de ${fmtEur(budget)} (${budgetCats.length === TIPOS.length ? 'Total' : budgetCats.join(', ')})`
+            : (totalIncome > 0 ? `${fmtEur(totalSpend)} de ${fmtEur(totalIncome)}` : 'sin límite')}
+          icon={<LI name="Activity" size={16}/>} 
+          delay="delay-4"/>
       </div>
 
       {/* ── CATEGORY ROW CARDS ── */}
@@ -1722,6 +1921,7 @@ function App() {
                 </div>
               : displayTx.map(tx=><TxRow key={tx.id} tx={tx} onEdit={(tx)=>setModalConfig({ open: true, type: tx.type, tx })} onDelete={delTx}/>)
             }
+            <div className="h-16 sm:h-8" />
           </div>
         </div>
 
@@ -1730,7 +1930,7 @@ function App() {
           <MonthSummaryWidget balance={balance} />
           <SettlementWidget monthTx={monthTx} currentUser={currentUser} />
           <BalanceChartWidget totalIncome={totalIncome} totalSpend={totalSpend} />
-          <BudgetWidget totalSpend={totalSpend}/>
+          <BudgetWidget monthTx={monthTx} budget={budget} setBudget={setBudget} budgetCats={budgetCats} setBudgetCats={setBudgetCats} budgetSpend={budgetSpend} />
           <CategoryWidget monthTx={monthTx}/>
           <GoalsWidget globalBalance={globalBalance} />
         </div>
@@ -1745,7 +1945,11 @@ function App() {
       )}
 
       {activeTab === 'year' && (
-        <AnnualReportView txs={txs} year={year} />
+        <AnnualReportView txs={txs} year={year} onExportYear={()=>doExport('year')} />
+      )}
+
+      {exportModalOpen && (
+        <ExportModal txs={txs} month={month} year={year} onClose={()=>setExportModalOpen(false)} onExport={doExport} />
       )}
 
       {/* ── BOTTOM NAVIGATION ── */}
