@@ -63,4 +63,15 @@ Puedes acceder, usar e instalar ZenGastos Pro directamente desde este enlace:
 
 ---
 
+## ⚖️ Licencia y Propiedad Intelectual
+
+Este proyecto y todo su código fuente están protegidos bajo licencia **Creative Commons Reconocimiento - NoComercial - CompartirIgual 4.0 Internacional (CC BY-NC-SA 4.0)**.
+
+* ✅ **Permitido:** Uso personal, doméstico, formativo, auditoría del código y creación de mejoras para uso personal no comercial.
+* ❌ **Prohibido:** Queda terminantemente prohibida la **venta, reventa, monetización, inclusión en planes de pago o explotación comercial** total o parcial de esta aplicación, su código fuente o su diseño sin el consentimiento expreso del autor original (`reyerox`).
+
+Para más detalles, consulta el archivo [LICENSE](file:///c:/Users/danie/Documents/Zan%20Gastos%20Antiguo/v4/LICENSE).
+
+---
+
 Desarrollado con 🤍 · **ZenGastos Pro v4**
