@@ -1,4 +1,4 @@
-# ZenGastos Pro v4 🌟
+# ZenGastos Pro 🌟
 
 > **Aplicación Web Progresiva (PWA) de Finanzas Personales e Individuales / Compartidas en Pareja**  
 > Diseñada bajo un enfoque de **privacidad absoluta** (100% en tu dispositivo, sin servidores ni bases de datos externas) y con una interfaz estética *Fintech Premium*.
