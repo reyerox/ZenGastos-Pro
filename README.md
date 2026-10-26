@@ -70,8 +70,7 @@ Este proyecto y todo su código fuente están protegidos bajo licencia **Creativ
 * ✅ **Permitido:** Uso personal, doméstico, formativo, auditoría del código y creación de mejoras para uso personal no comercial.
 * ❌ **Prohibido:** Queda terminantemente prohibida la **venta, reventa, monetización, inclusión en planes de pago o explotación comercial** total o parcial de esta aplicación, su código fuente o su diseño sin el consentimiento expreso del autor original (`reyerox`).
 
-Para más detalles, consulta el archivo [LICENSE](file:///c:/Users/danie/Documents/Zan%20Gastos%20Antiguo/v4/LICENSE).
-
+Para más detalles, consulta el archivo [LICENSE](LICENSE).
 ---
 
-Desarrollado con 🤍 · **ZenGastos Pro v4**
+Desarrollado con 🤍 · **ZenGastos Pro**
